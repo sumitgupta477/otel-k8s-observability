@@ -1,5 +1,7 @@
 # OpenTelemetry Collector on Kubernetes
 
+[![e2e](https://github.com/sumitgupta477/otel-k8s-observability/actions/workflows/e2e.yml/badge.svg)](https://github.com/sumitgupta477/otel-k8s-observability/actions/workflows/e2e.yml)
+
 A complete, reproducible observability stack: one vendor-neutral **OpenTelemetry Collector** pipeline that carries **traces, metrics and logs** from Kubernetes workloads to **Jaeger, Prometheus and Loki**, viewed together in **Grafana** with one-click links between a log line and its trace.
 
 Everything runs on a local 3-node [kind](https://kind.sigs.k8s.io/) cluster with one command, and a GitHub Actions workflow builds it from scratch and verifies the whole flow end to end on every push.

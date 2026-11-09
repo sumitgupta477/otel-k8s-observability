@@ -20,7 +20,7 @@ status=$?
 
 if [[ $status -ne 0 ]]; then
   echo; echo "==> Gateway collector logs"; kubectl -n observability logs deploy/otel-gateway --tail=60
-  echo; echo "==> Agent collector logs";   kubectl -n observability logs ds/otel-agent --tail=60
+  echo; echo "==> Agent collector logs";   kubectl -n observability logs -l app.kubernetes.io/instance=otel-agent --tail=80 --prefix
   echo; echo "==> Pods";                   kubectl get pods -A -o wide
 fi
 exit $status

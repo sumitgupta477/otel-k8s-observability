@@ -11,6 +11,7 @@ Checks:
   2. Metrics: Prometheus has the app's business metric (orders_created_total)
               and RED metrics generated from traces by the spanmetrics connector.
   3. K8s:     Prometheus has kubelet pod metrics from the node agents.
+(Logs are checked first, so their trace IDs can be reused by the trace checks.)
   4. Logs:    Loki has demo pod logs collected from the nodes, enriched with
               Kubernetes metadata, and carrying a trace_id.
   5. Correlation: the trace_id found in a Loki log line resolves to a trace
@@ -55,13 +56,28 @@ def retry(name, fn, timeout):
 
 
 def check_distributed_trace():
-    data = get_json(f"{JAEGER}/api/traces?service=frontend&limit=50&lookback=1h")["data"]
-    for t in data:
+    """Find a trace spanning both services. Search by service first; if the
+    search API returns nothing, fall back to trace IDs seen in Loki logs."""
+    candidates = []
+    try:
+        candidates = get_json(f"{JAEGER}/api/traces?service=frontend&limit=20")["data"]
+    except Exception:  # noqa: BLE001 - fall back to trace IDs from logs
+        pass
+    for tid in found_trace_ids[-20:]:
+        try:
+            candidates += get_json(f"{JAEGER}/api/traces/{tid}")["data"]
+        except Exception:  # noqa: BLE001 - trace may not be flushed yet
+            continue
+    for t in candidates:
         services = {p["serviceName"] for p in t["processes"].values()}
         ops = {s["operationName"] for s in t["spans"]}
         if {"frontend", "orders"} <= services and "db.insert_order" in ops:
             return True, f"trace {t['traceID']} has {len(t['spans'])} spans across {sorted(services)}"
-    return False, f"{len(data)} frontend traces found, none spanning frontend+orders with a db span yet"
+    try:
+        known = get_json(f"{JAEGER}/api/services")["data"]
+    except Exception as e:  # noqa: BLE001
+        known = f"unavailable ({e})"
+    return False, f"{len(candidates)} candidate traces, none spanning frontend+orders; Jaeger services: {known}"
 
 
 def prom_value(query):
@@ -84,6 +100,16 @@ def loki_lines(query, minutes=30):
     })
     streams = get_json(f"{LOKI}/loki/api/v1/query_range?{params}")["data"]["result"]
     return [(s["stream"], line) for s in streams for _, line in s["values"]]
+
+
+def check_k8s_metrics():
+    """kubeletstats (k8s_pod_*, k8s_node_*, container_*) or hostmetrics (system_*)."""
+    url = f"{PROM}/api/v1/label/__name__/values"
+    names = get_json(url)["data"]
+    infra = [n for n in names if n.startswith(("k8s_pod_", "k8s_node_", "container_", "system_"))]
+    pod = [n for n in infra if n.startswith("k8s_pod_")]
+    detail = f"{len(infra)} infra metric names, e.g. {infra[:4]}"
+    return bool(pod), detail
 
 
 found_trace_ids = []
@@ -126,12 +152,12 @@ def main():
             pass
 
     checks = [
+        ("pod logs in Loki with k8s labels and trace_id", check_loki_logs),
+        ("log -> trace correlation", check_correlation),
         ("distributed trace across services", check_distributed_trace),
         ("app business metric", check_prom("sum(orders_created_total)")),
         ("RED metrics from spanmetrics connector", check_prom("sum(traces_span_metrics_calls_total)")),
-        ("kubelet pod metrics from node agents", check_prom('count({__name__=~"k8s_pod_.+"})')),
-        ("pod logs in Loki with k8s labels and trace_id", check_loki_logs),
-        ("log -> trace correlation", check_correlation),
+        ("Kubernetes and host metrics from node agents", check_k8s_metrics),
     ]
     results = [retry(name, fn, args.timeout) for name, fn in checks]
     print(f"\n{sum(results)}/{len(results)} checks passed")

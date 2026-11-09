@@ -37,7 +37,7 @@ config:
     # Turns spans into request rate, error rate and latency (RED) metrics per
     # service and endpoint, so dashboards and alerts work even for services
     # that export no metrics of their own.
-    spanmetrics:
+    span_metrics:
       histogram:
         explicit:
           buckets: [10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s]
@@ -83,9 +83,9 @@ config:
       traces:
         receivers: [otlp]
         processors: [memory_limiter, attributes/scrub, batch]
-        exporters: [otlp/jaeger, spanmetrics]
+        exporters: [otlp/jaeger, span_metrics]
       metrics:
-        receivers: [otlp, spanmetrics]
+        receivers: [otlp, span_metrics]
         processors: [memory_limiter, batch]
         exporters: [otlphttp/prometheus]
       logs:

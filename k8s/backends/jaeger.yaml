@@ -1,0 +1,39 @@
+# Jaeger v2 all-in-one: receives OTLP traces, serves the UI and query API.
+# In-memory storage keeps the demo simple; use Elasticsearch, Cassandra or
+# Badger with a PersistentVolume in production.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger
+  labels: { app: jaeger }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: jaeger }
+  template:
+    metadata:
+      labels: { app: jaeger }
+    spec:
+      containers:
+        - name: jaeger
+          image: jaegertracing/jaeger:2.23.0
+          ports:
+            - { name: otlp-grpc, containerPort: 4317 }
+            - { name: otlp-http, containerPort: 4318 }
+            - { name: ui, containerPort: 16686 }
+          readinessProbe:
+            httpGet: { path: /, port: 16686 }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger
+spec:
+  selector: { app: jaeger }
+  ports:
+    - { name: otlp-grpc, port: 4317, targetPort: otlp-grpc }
+    - { name: otlp-http, port: 4318, targetPort: otlp-http }
+    - { name: ui, port: 16686, targetPort: ui }

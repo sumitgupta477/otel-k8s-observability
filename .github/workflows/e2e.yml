@@ -1,0 +1,36 @@
+# Spins up a 3-node kind cluster on the GitHub runner, deploys the whole
+# stack with scripts/up.sh, and runs the end-to-end smoke test: traces,
+# metrics and logs must all arrive, and log lines must link to traces.
+name: e2e
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  kind-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: helm/kind-action@v1.12.0
+        with:
+          config: kind-config.yaml
+          cluster_name: otel-demo
+          wait: 120s
+
+      - uses: azure/setup-helm@v4
+
+      - name: Deploy the stack
+        env:
+          CREATE_CLUSTER: "0"
+        run: scripts/up.sh
+
+      - name: End-to-end smoke test
+        run: scripts/smoke_test.sh --timeout 240

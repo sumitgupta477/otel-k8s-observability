@@ -1,0 +1,7 @@
+# Everything except the collectors (which are installed with Helm):
+#   kubectl apply -k k8s/
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - backends
+  - demo

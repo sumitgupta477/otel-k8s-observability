@@ -1,0 +1,83 @@
+# OpenTelemetry Collector as a node AGENT (DaemonSet, one pod per node).
+# Chart: open-telemetry/opentelemetry-collector (see scripts/up.sh for the pinned version)
+#
+# Job: collect everything produced on its node and forward it to the gateway.
+#   - OTLP from app pods (apps send to their node's IP, port 4317, via hostPort)
+#   - container log files from /var/log/pods         (preset: logsCollection)
+#   - pod/container CPU and memory from the kubelet  (preset: kubeletMetrics)
+#   - node CPU, memory, disk and network             (preset: hostMetrics)
+#   - Kubernetes metadata on every signal            (preset: kubernetesAttributes)
+# This is the vendor-neutral replacement for running Fluent Bit/Filebeat for
+# logs plus a separate metrics agent and tracing agent on every node.
+
+mode: daemonset
+fullnameOverride: otel-agent
+
+image:
+  # The "k8s" distribution: only the components needed on Kubernetes.
+  repository: otel/opentelemetry-collector-k8s
+
+presets:
+  logsCollection:
+    enabled: true
+  kubernetesAttributes:
+    enabled: true
+  kubeletMetrics:
+    enabled: true
+  hostMetrics:
+    enabled: true
+
+# Only OTLP is needed; turn off the chart's default Jaeger/Zipkin receivers.
+ports:
+  jaeger-compact:
+    enabled: false
+  jaeger-thrift:
+    enabled: false
+  jaeger-grpc:
+    enabled: false
+  zipkin:
+    enabled: false
+
+config:
+  receivers:
+    jaeger: null
+    zipkin: null
+    prometheus: null
+  processors:
+    # Drop data instead of crashing the node if the gateway is slow.
+    memory_limiter:
+      check_interval: 5s
+      limit_percentage: 80
+      spike_limit_percentage: 25
+    batch: {}
+  exporters:
+    otlp:
+      endpoint: otel-gateway.observability.svc.cluster.local:4317
+      tls:
+        insecure: true
+      sending_queue:
+        enabled: true
+      retry_on_failure:
+        enabled: true
+  service:
+    pipelines:
+      # Presets add their receivers/processors to these pipelines.
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [otlp]
+      metrics:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [otlp]
+      logs:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [otlp]
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 256Mi

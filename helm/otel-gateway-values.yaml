@@ -1,0 +1,101 @@
+# OpenTelemetry Collector as a central GATEWAY (Deployment).
+# Chart: open-telemetry/opentelemetry-collector (see scripts/up.sh for the pinned version)
+#
+# Job: receive from every node agent, process centrally, and fan out to the
+# backends. Changing a backend (Jaeger -> Tempo, Prometheus -> Datadog, ...)
+# is a change to this file only; apps and agents stay untouched.
+#
+#   traces  -> Jaeger (OTLP)                + spanmetrics connector
+#   metrics -> Prometheus (native OTLP)     incl. RED metrics derived from traces
+#   logs    -> Loki (native OTLP)
+
+mode: deployment
+replicaCount: 1
+fullnameOverride: otel-gateway
+
+image:
+  # The "contrib" distribution, for the spanmetrics connector.
+  repository: otel/opentelemetry-collector-contrib
+
+ports:
+  jaeger-compact:
+    enabled: false
+  jaeger-thrift:
+    enabled: false
+  jaeger-grpc:
+    enabled: false
+  zipkin:
+    enabled: false
+
+config:
+  receivers:
+    jaeger: null
+    zipkin: null
+    prometheus: null
+
+  connectors:
+    # Turns spans into request rate, error rate and latency (RED) metrics per
+    # service and endpoint, so dashboards and alerts work even for services
+    # that export no metrics of their own.
+    spanmetrics:
+      histogram:
+        explicit:
+          buckets: [10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s]
+      dimensions:
+        - name: http.request.method
+        - name: http.response.status_code
+      metrics_flush_interval: 15s
+
+  processors:
+    memory_limiter:
+      check_interval: 5s
+      limit_percentage: 80
+      spike_limit_percentage: 25
+    batch:
+      send_batch_size: 1024
+      timeout: 5s
+    # Never ship credentials or session data to any backend.
+    attributes/scrub:
+      actions:
+        - key: http.request.header.authorization
+          action: delete
+        - key: http.request.header.cookie
+          action: delete
+
+  exporters:
+    otlp/jaeger:
+      endpoint: jaeger.observability.svc.cluster.local:4317
+      tls:
+        insecure: true
+    otlphttp/prometheus:
+      # Prometheus 3 native OTLP endpoint (needs --web.enable-otlp-receiver)
+      endpoint: http://prometheus.observability.svc.cluster.local:9090/api/v1/otlp
+      tls:
+        insecure: true
+    otlphttp/loki:
+      # Loki 3 native OTLP endpoint
+      endpoint: http://loki.observability.svc.cluster.local:3100/otlp
+      tls:
+        insecure: true
+
+  service:
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, attributes/scrub, batch]
+        exporters: [otlp/jaeger, spanmetrics]
+      metrics:
+        receivers: [otlp, spanmetrics]
+        processors: [memory_limiter, batch]
+        exporters: [otlphttp/prometheus]
+      logs:
+        receivers: [otlp]
+        processors: [memory_limiter, attributes/scrub, batch]
+        exporters: [otlphttp/loki]
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 512Mi

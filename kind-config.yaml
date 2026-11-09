@@ -1,0 +1,9 @@
+# Local Kubernetes cluster: one control plane and two workers, so the
+# collector DaemonSet runs on more than one node.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: otel-demo
+nodes:
+  - role: control-plane
+  - role: worker
+  - role: worker

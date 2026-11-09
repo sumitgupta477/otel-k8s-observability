@@ -1,0 +1,35 @@
+# Grafana data sources, wired so you can jump between signals:
+#   Loki log line  --(trace_id=...)-->  Jaeger trace
+#   Jaeger trace   --(Logs for this span)-->  Loki logs with that trace ID
+# In provisioning files "$$" is a literal "$".
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus.observability.svc.cluster.local:9090
+    isDefault: true
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki.observability.svc.cluster.local:3100
+    jsonData:
+      derivedFields:
+        - name: TraceID
+          matcherRegex: "trace_id=(\\w+)"
+          datasourceUid: jaeger
+          url: "$${__value.raw}"
+  - name: Jaeger
+    uid: jaeger
+    type: jaeger
+    access: proxy
+    url: http://jaeger.observability.svc.cluster.local:16686
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki
+        customQuery: true
+        query: '{k8s_namespace_name="demo"} |= "$${__trace.traceId}"'
+        spanStartTimeShift: "-5m"
+        spanEndTimeShift: "5m"

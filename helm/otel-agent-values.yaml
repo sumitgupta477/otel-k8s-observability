@@ -43,6 +43,10 @@ config:
     jaeger: null
     zipkin: null
     prometheus: null
+    kubeletstats:
+      # kind's kubelets use self-signed certificates without IP SANs. Keep
+      # verification on in clusters with properly issued kubelet certificates.
+      insecure_skip_verify: true
   processors:
     # Drop data instead of crashing the node if the gateway is slow.
     memory_limiter:

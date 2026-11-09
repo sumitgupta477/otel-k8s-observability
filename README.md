@@ -81,7 +81,7 @@ Tear down with `scripts/down.sh`.
 - **Why apps send to the node agent, not the gateway?** Lower latency, no cross-node traffic for every span, and the agent can attach node metadata. Pods find their agent through the downward API (`status.hostIP`).
 - **Why pod identity in `OTEL_RESOURCE_ATTRIBUTES`?** Traffic through a hostPort can arrive with a translated source IP, which breaks the `k8sattributes` processor's default IP-based lookup. Sending `k8s.pod.uid` lets it match the pod reliably.
 - **Logs via stdout and filelog, not OTLP**: the same path works for every container, including ones you can't instrument. That's how Fluent Bit or Filebeat DaemonSets usually do it, now handled by the same collector.
-- **Demo shortcuts**: in-memory Jaeger, `emptyDir` storage for Prometheus and Loki, anonymous Grafana admin. For production use persistent storage, authentication, TLS between collectors and backends, and tail-based sampling in the gateway.
+- **Demo shortcuts**: kubelet TLS verification is skipped because kind's kubelet certificates have no IP SANs; in-memory Jaeger, `emptyDir` storage for Prometheus and Loki, anonymous Grafana admin. For production use persistent storage, authentication, TLS between collectors and backends, and tail-based sampling in the gateway.
 
 ## Versions
 
